@@ -23,30 +23,30 @@ import (
 )
 
 const (
-	bpsSign   = "á"
-	kibpsSign = "â"
-	mibpsSign = "ã"
+	bpsSign   = "b"
+	kibpsSign = "kb"
+	mibpsSign = "mb"
 
-	unpluggedSign = "è"
-	pluggedSign   = "é"
+	unpluggedSign = "☢"
+	pluggedSign   = "⚡"
 
-	cpuSign = "Ï"
-	memSign = "Þ"
+	cpuSign = "CPU"
+	memSign = "MEM"
 
-	netReceivedSign    = "Ð"
-	netTransmittedSign = "Ñ"
+	netReceivedSign    = "RX "
+	netTransmittedSign = "TX "
 
-	floatSeparator = "à"
-	dateSeparator  = "Ý"
-	fieldSeparator = "û"
+	floatSeparator = ""
+	dateSeparator  = ""
+	fieldSeparator = " | "
 )
 
 var (
 	netDevs = map[string]struct{}{
-		"eth0:": {},
-		"eth1:": {},
+		"eth0:":  {},
+		"eth1:":  {},
 		"wlan0:": {},
-		"ppp0:": {},
+		"ppp0:":  {},
 	}
 	cores = runtime.NumCPU() // count of cores to scale cpu usage
 	rxOld = 0
@@ -56,7 +56,7 @@ var (
 // fixed builds a fixed width string with given pre- and fitting suffix
 func fixed(pre string, rate int) string {
 	if rate < 0 {
-		return pre + " ERR"
+		return pre + " ERR"
 	}
 
 	var spd = float32(rate)
@@ -64,11 +64,11 @@ func fixed(pre string, rate int) string {
 
 	switch {
 	case spd >= (1000 * 1024 * 1024): // > 999 MiB/s
-		return "" + pre + "ERR"
+		return "" + pre + "ERR"
 	case spd >= (1000 * 1024): // display as MiB/s
 		spd /= (1024 * 1024)
 		suf = mibpsSign
-		pre = "" + pre + ""
+		pre = "" + pre + ""
 	case spd >= 1000: // display as KiB/s
 		spd /= 1024
 		suf = kibpsSign
@@ -88,10 +88,10 @@ func fixed(pre string, rate int) string {
 // updateNetUse reads current transfer rates of certain network interfaces
 func updateNetUse() string {
 	file, err := os.Open("/proc/net/dev")
-	if err != nil {
-		return netReceivedSign + " ERR " + netTransmittedSign + " ERR"
-	}
 	defer file.Close()
+	if err != nil {
+		return netReceivedSign + " ERR " + netTransmittedSign + " ERR"
+	}
 
 	var void = 0 // target for unused values
 	var dev, rx, tx, rxNow, txNow = "", 0, 0, 0, 0
@@ -112,9 +112,9 @@ func updateNetUse() string {
 // colored surrounds the percentage with color escapes if it is >= 70
 func colored(icon string, percentage int) string {
 	if percentage >= 100 {
-		return fmt.Sprintf("%s%3d", icon, percentage)
+		return fmt.Sprintf("%s%3d", icon, percentage)
 	} else if percentage >= 70 {
-		return fmt.Sprintf("%s%3d", icon, percentage)
+		return fmt.Sprintf("%s%3d", icon, percentage)
 	}
 	return fmt.Sprintf("%s%3d", icon, percentage)
 }
@@ -123,13 +123,13 @@ func colored(icon string, percentage int) string {
 func updatePower() string {
 	const powerSupply = "/sys/class/power_supply/"
 	var enFull, enNow, enPerc int = 0, 0, 0
-	var plugged, err = ioutil.ReadFile(powerSupply + "AC/online")
+	var plugged, err = ioutil.ReadFile(powerSupply + "ACAD/online")
 	if err != nil {
-		return "ÏERR"
+		return err.Error()
 	}
 	batts, err := ioutil.ReadDir(powerSupply)
 	if err != nil {
-		return "ÏERR"
+		return err.Error()
 	}
 
 	readval := func(name, field string) int {
@@ -160,7 +160,7 @@ func updatePower() string {
 	}
 
 	if enFull == 0 { // Battery found but no readable full file.
-		return "ÏERR"
+		return "ERR"
 	}
 
 	enPerc = enNow * 100 / enFull
@@ -170,9 +170,9 @@ func updatePower() string {
 	}
 
 	if enPerc <= 5 {
-		return fmt.Sprintf("%s%3d", icon, enPerc)
+		return fmt.Sprintf("%s%3d", icon, enPerc)
 	} else if enPerc <= 10 {
-		return fmt.Sprintf("%s%3d", icon, enPerc)
+		return fmt.Sprintf("%s%3d", icon, enPerc)
 	}
 	return fmt.Sprintf("%s%3d", icon, enPerc)
 }
@@ -182,11 +182,11 @@ func updateCPUUse() string {
 	var load float32
 	var loadavg, err = ioutil.ReadFile("/proc/loadavg")
 	if err != nil {
-		return cpuSign + "ERR"
+		return cpuSign + "ERR"
 	}
 	_, err = fmt.Sscanf(string(loadavg), "%f", &load)
 	if err != nil {
-		return cpuSign + "ERR"
+		return cpuSign + "ERR"
 	}
 	return colored(cpuSign, int(load*100.0/float32(cores)))
 }
@@ -194,17 +194,17 @@ func updateCPUUse() string {
 // updateMemUse reads the memory used by applications and scales to [0, 100]
 func updateMemUse() string {
 	var file, err = os.Open("/proc/meminfo")
-	if err != nil {
-		return memSign + "ERR"
-	}
 	defer file.Close()
+	if err != nil {
+		return memSign + "ERR"
+	}
 
 	// done must equal the flag combination (0001 | 0010 | 0100 | 1000) = 15
 	var total, used, done = 0, 0, 0
 	for info := bufio.NewScanner(file); done != 15 && info.Scan(); {
 		var prop, val = "", 0
 		if _, err = fmt.Sscanf(info.Text(), "%s %d", &prop, &val); err != nil {
-			return memSign + "ERR"
+			return memSign + "ERR"
 		}
 		switch prop {
 		case "MemTotal:":
@@ -231,10 +231,10 @@ func main() {
 		var status = []string{
 			"",
 			updateNetUse(),
-			updateCPUUse(),
-			updateMemUse(),
-			updatePower(),
-			time.Now().Local().Format("Mon 02 " + dateSeparator + " 15:04:05"),
+			updateCPUUse() + "%",
+			updateMemUse() + "%",
+			updatePower() + "%",
+			time.Now().Local().Format("Monday January 02  3:04:05 PM"),
 		}
 		exec.Command("xsetroot", "-name", strings.Join(status, fieldSeparator)).Run()
 
